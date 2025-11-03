@@ -1,0 +1,53 @@
+[package]
+name = "glow-margin"
+version = "1.0.0"
+description = "Manager for margin accounts"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "glow_margin"
+path = "src/lib.rs"
+
+[features]
+no-entrypoint = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+testing = ["glow-metadata/testing", "glow-airspace/testing", "glow-program-common/testing"]
+cli = ["no-entrypoint", "serde"]
+devnet = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "glow-metadata/idl-build", "glow-airspace/idl-build"]
+
+[dependencies]
+static_assertions = "1.1.0"
+bytemuck = { version = "1.7", features = ["derive", "min_const_generics"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
+bitflags = "2.3"
+
+anchor-lang = { version = "0.30.1", features = [
+    "init-if-needed",
+] }
+anchor-spl = "0.30.1"
+solana-program = "1.18"
+
+pyth-solana-receiver-sdk = "0.5.0"
+pythnet-sdk = "2.3"
+byteorder = "1.5"
+
+glow-program-proc-macros = { path = "../../libraries/rust/program-proc-macros" }
+glow-program-common = { path = "../../libraries/rust/program-common" }
+
+glow-metadata = { path = "../metadata", features = ["no-entrypoint"] }
+glow-airspace = { path = "../airspace", features = ["no-entrypoint"] }
+
+[dependencies.lookup-table-registry]
+git = "https://github.com/Blueprint-Finance/lookup-table-registry.git"
+rev = "714a5cb"
+default-features = false
+features = ["cpi"]
+
+[dev-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_test = "1.0"
+itertools = "0.10"

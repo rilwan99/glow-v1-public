@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Copyright (C) 2024 A1 XYZ, INC.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use anchor_lang::prelude::*;
+
+#[constant]
+pub const TOKEN_CONFIG_SEED: &[u8] = b"token-config";
+
+#[constant]
+pub const ADAPTER_CONFIG_SEED: &[u8] = b"adapter-config";
+
+#[constant]
+#[deprecated(
+    note = "liquidators are configured in a generic Permit account using PERMIT_SEED - since Jan 2023"
+)]
+pub const LIQUIDATOR_CONFIG_SEED: &[u8] = PERMIT_SEED;
+
+#[constant]
+pub const PERMIT_SEED: &[u8] = b"permit";
+
+#[constant]
+pub const MARGIN_ACCOUNT_CONSTRAINT_SEED: &[u8] = b"margin-account-constraint";

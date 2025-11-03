@@ -1,0 +1,116 @@
+[package]
+name = "hosted-tests"
+version = "1.0.0"
+edition = "2021"
+
+[features]
+test = []
+default = ["test"]
+localnet = []
+batch_all = []
+batch1 = []
+batch2 = []
+
+[dependencies]
+async-recursion = "1"
+async-trait = "0.1.56"
+bincode = "1.3"
+base64 = "0.13"
+bytemuck = "1"
+futures = "0.3"
+futures-retry = "0.6"
+parking_lot = "0.12"
+anyhow = { version = "1", features = ["backtrace"] }
+rand = "0.8"
+rand_distr = "0.3.0"
+lazy_static = "1.4.0"
+shellexpand = "2.1.0"
+env_logger = "0.9"
+solana-clap-utils = "1.18"
+serde_json = "1"
+serde = { version = "1.0.152" }
+
+tokio = { version = "1", features = ["macros", "time"] }
+serial_test = "0.6.0"
+
+solana-sdk = "1.18"
+solana-client = "1.18"
+solana-cli-config = "1.18"
+solana-program = "1.18"
+solana-address-lookup-table-program = "1.18"
+spl-stake-pool = { version = "1" }
+
+anchor-lang = "0.30.1"
+anchor-spl = { version = "0.30.1" }
+bitflags = "2.8"
+
+solana-test-framework = { git = "https://github.com/halbornteam/solana-test-framework", features = [
+    "anchor",
+], branch = "solana1.18" }
+solana-program-test = "1.18"
+solana-transaction-status = "1.18"
+solana-banks-interface = "1.18"
+
+glow-static-program-registry = { path = "../../libraries/rust/static-program-registry" }
+pyth-solana-receiver-sdk = "0.5.0"
+
+# External programs for testing invoke_many
+whirlpool = { git = "https://github.com/jet-lab/whirlpools", features = [
+    "no-entrypoint",
+], branch = "arrayref-patch" }
+# stable-swap-anchor = { git = "https://github.com/Blueprint-Finance/stable-swap", branch = "anchor/0.30.1" }
+stable-swap-client = { git = "https://github.com/jet-lab/stable-swap", branch = "anchor/0.30.1" }
+rust_decimal = "1"
+num-traits = "0.2"
+
+glow-margin = { path = "../../programs/margin", features = ["no-entrypoint", "testing"] }
+glow-margin-pool = { path = "../../programs/margin-pool", features = [
+    "no-entrypoint",
+    "testing",
+] }
+glow-metadata = { path = "../../programs/metadata", features = [
+    "no-entrypoint",
+    "testing",
+] }
+glow-airspace = { path = "../../programs/airspace", features = [
+    "no-entrypoint",
+    "testing",
+] }
+glow-test-service = { path = "../../programs/test-service", features = [
+    "no-entrypoint",
+] }
+
+glow-instructions = { path = "../../libraries/rust/instructions" }
+glow-solana-client = { path = "../../libraries/rust/solana-client" }
+glow-client = { path = "../../libraries/rust/client" }
+glow-margin-sdk = { path = "../../libraries/rust/margin", features = [
+    "testing",
+] }
+glow-environment = { path = "../../libraries/rust/environment" }
+glow-program-common = { path = "../../libraries/rust/program-common" }
+
+jupiter-cpi = { git = "https://github.com/Blueprint-Finance/jupiter-cpi", branch = "anchor/0.30.1" }
+jupiter-amm-interface = { git = "https://github.com/Blueprint-Finance/jupiter-amm-interface", branch = "anchor/0.30.1" }
+
+glow-testing = { path = "../../libraries/rust/testing" }
+glow-tools = { path = "../../libraries/rust/tools" }
+glow-idls = { path = "../../libraries/rust/idls" }
+
+squads-multisig = { git = "https://github.com/Blueprint-Finance/squads-v4/", branch = "anchor-0.30.1" }
+squads-multisig-program = { git = "https://github.com/Blueprint-Finance/squads-v4/", branch = "anchor-0.30.1" }
+
+mock-adapter = { path = "../mock-adapter", features = ["no-entrypoint"] }
+
+itertools = "0.10"
+
+[dependencies.glow-simulation]
+path = "../../libraries/rust/simulation"
+
+[dependencies.lookup-table-registry]
+git = "https://github.com/Blueprint-Finance/lookup-table-registry.git"
+rev = "714a5cb"
+features = ["program"]
+
+[dependencies.lookup-table-registry-client]
+git = "https://github.com/Blueprint-Finance/lookup-table-registry.git"
+rev = "714a5cb"

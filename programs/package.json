@@ -1,0 +1,10 @@
+{
+    "name": "@bpf-glow/programs",
+    "scripts": {
+        "//description": "Wrapper needed for Turborepo",
+        "build": "../scripts/build-anchor-test-programs.sh",
+        "dev": "COPYFILE_DISABLE=1 ../scripts/run_local_validator.sh -r",
+        "lint": "rustup run nightly-2025-04-09 cargo fmt --all --check",
+        "test": "NEXTEST_FAIL_FAST=true rustup run nightly-2025-04-09 cargo nextest run --features debug-msg"
+    }
+}

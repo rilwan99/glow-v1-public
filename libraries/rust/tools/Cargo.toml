@@ -1,0 +1,27 @@
+[package]
+name = "glow-tools"
+version = "1.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror = "1"
+log = "0.4"
+hex = "0.4"
+base64 = "0.22"
+strum = "0.24"
+reqwest = { version = "0.11", features = ["json"] }
+
+solana-sdk = "1.18"
+solana-address-lookup-table-program = "1.18"
+pyth-sdk = "0.8"
+pyth-solana-receiver-sdk = "0.5"
+serde = { version = "1", features = ["derive"] }
+
+lookup-table-registry-client = { git = "https://github.com/Blueprint-Finance/lookup-table-registry.git", rev = "714a5cb", default-features = false }
+lookup-table-registry = { git = "https://github.com/Blueprint-Finance/lookup-table-registry.git", rev = "714a5cb", features = ["no-entrypoint"] }
+
+glow-instructions = { path = "../instructions" }
+glow-environment = { path = "../environment" }
+glow-solana-client = { path = "../solana-client" }

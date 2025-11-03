@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "programs/*",
+    "tests/hosted",
+    "tests/mock-adapter",
+    "libraries/rust/*",
+]
+
+# Excluded instead of removed, so we can reuse it later
+exclude = [
+    "libraries/rust/client-web",
+    "programs/.turbo",
+]
+resolver = "2"
+
+[workspace.dependencies]
+proc-macro2 = "=1.0.94"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1

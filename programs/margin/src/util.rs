@@ -1,0 +1,336 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Copyright (C) 2024 A1 XYZ, INC.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use anchor_lang::prelude::*;
+use anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT;
+
+use crate::{
+    syscall::{sys, Sys},
+    AccountPosition, ErrorCode,
+};
+
+pub trait Require<T> {
+    fn require(self) -> std::result::Result<T, ErrorCode>;
+    fn require_mut(&mut self) -> std::result::Result<&mut T, ErrorCode>;
+}
+
+impl<T: ErrorIfMissing> Require<T> for Option<T> {
+    fn require(self) -> std::result::Result<T, ErrorCode> {
+        self.ok_or(T::ERROR)
+    }
+
+    fn require_mut(&mut self) -> std::result::Result<&mut T, ErrorCode> {
+        self.as_mut().ok_or(T::ERROR)
+    }
+}
+
+pub trait ErrorIfMissing {
+    const ERROR: ErrorCode;
+}
+
+impl ErrorIfMissing for &mut AccountPosition {
+    const ERROR: ErrorCode = ErrorCode::PositionNotRegistered;
+}
+
+impl ErrorIfMissing for &AccountPosition {
+    const ERROR: ErrorCode = ErrorCode::PositionNotRegistered;
+}
+
+// macro_rules! log_on_error {
+//     ($result:expr, $($args:tt)*) => {{
+//         if $result.is_err() {
+//             msg!($($args)*);
+//         }
+//         $result
+//     }};
+// }
+// pub(crate) use log_on_error;
+
+/// Data made available to invoked programs by the margin program. Put data here if:
+/// - adapters need a guarantee that the margin program is the actual source of the data, or
+/// - the data is needed by functions defined in margin that are called by adapters
+/// Note: The security of the margin program cannot rely on function calls that happen within
+/// adapters, because adapters can falsify the arguments to those functions.
+/// Rather, this data should only be used to enable adapters to protect themselves, in which case
+/// it would be in their best interest to pass along the actual state from the margin account.
+#[repr(C)]
+#[account(zero_copy)]
+#[derive(Debug, Default)]
+pub struct Invocation {
+    /// The stack heights from where the margin program invoked an adapter.
+    caller_heights: BitSet,
+}
+
+impl Invocation {
+    /// Call this immediately before invoking another program to indicate that
+    /// an invocation originated from the current stack height.
+    pub(crate) fn start(&mut self) {
+        self.caller_heights.insert(sys().get_stack_height() as u8);
+    }
+
+    /// Call this immediately after invoking another program to clear the
+    /// indicator that an invocation originated from the current stack height.
+    pub(crate) fn end(&mut self) {
+        self.caller_heights.remove(sys().get_stack_height() as u8);
+    }
+
+    /// Returns ok if the current instruction was directly invoked by a cpi
+    /// that marked the start.
+    pub fn verify_directly_invoked(&self) -> Result<()> {
+        if !self.directly_invoked() {
+            msg!(
+                "Current stack height: {}. Invocations: {:?} (indexed from {})",
+                sys().get_stack_height(),
+                self,
+                TRANSACTION_LEVEL_STACK_HEIGHT
+            );
+            return Err(ErrorCode::IndirectInvocation.into());
+        }
+
+        Ok(())
+    }
+
+    /// Returns true if the current instruction was directly invoked by a cpi
+    /// that marked the start.
+    pub fn directly_invoked(&self) -> bool {
+        let height = sys().get_stack_height();
+        height != 0 && self.caller_heights.contains(height as u8 - 1)
+    }
+}
+
+mod _idl {
+    use anchor_lang::prelude::*;
+
+    #[derive(AnchorSerialize, AnchorDeserialize, Default)]
+    pub struct Invocation {
+        pub flags: u8,
+    }
+}
+
+#[repr(C)]
+#[account(zero_copy)]
+#[derive(Default, Debug)]
+struct BitSet {
+    bits: u8,
+}
+
+impl BitSet {
+    fn insert(&mut self, n: u8) {
+        if n > 7 {
+            panic!("attempted to set value outside bounds: {}", n);
+        }
+        self.bits |= 1 << n;
+    }
+
+    fn remove(&mut self, n: u8) {
+        self.bits &= !(1 << n);
+    }
+
+    fn contains(&self, n: u8) -> bool {
+        self.bits >> n & 1 == 1
+    }
+}
+
+#[cfg(test)]
+mod test {
+    /// potentially useful methods that are well tested.
+    /// if useful, move to main impl. if annoying, delete
+    impl BitSet {
+        fn set(&mut self, n: u8, state: bool) {
+            if state {
+                self.insert(n)
+            } else {
+                self.remove(n)
+            }
+        }
+
+        fn max(&self) -> Option<u32> {
+            if self.bits == 0 {
+                None
+            } else {
+                Some(7 - self.bits.leading_zeros())
+            }
+        }
+
+        fn min(&self) -> Option<u32> {
+            if self.bits == 0 {
+                None
+            } else {
+                Some(7 - self.bits.trailing_zeros())
+            }
+        }
+    }
+
+    use anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT;
+    use itertools::Itertools;
+
+    use crate::mock_sys;
+
+    use super::*;
+
+    const MAX_DEPTH: u8 = 5 + (TRANSACTION_LEVEL_STACK_HEIGHT as u8);
+
+    #[test]
+    fn never_report_if_none_marked() {
+        let subject = Invocation::default();
+        for i in 0..MAX_DEPTH {
+            mock_sys!(stack_height = i as usize);
+            assert!(!subject.directly_invoked())
+        }
+    }
+
+    /// Tests the typical case of margin at the top level
+    #[test]
+    fn happy_path() {
+        let mut subject = Invocation::default();
+        // mark start
+        mock_sys!(stack_height = 1);
+        subject.start();
+
+        // actual invocation
+        assert!(!subject.directly_invoked());
+        mock_sys!(stack_height = 2);
+        assert!(subject.directly_invoked());
+
+        // too nested levels
+        mock_sys!(stack_height = 3);
+        assert!(!subject.directly_invoked());
+        mock_sys!(stack_height = 4);
+        assert!(!subject.directly_invoked());
+        mock_sys!(stack_height = 5);
+        assert!(!subject.directly_invoked());
+
+        // same level as actual after done
+        mock_sys!(stack_height = 1);
+        subject.end();
+        mock_sys!(stack_height = 2);
+        assert!(!subject.directly_invoked());
+    }
+
+    /// Verify every scenario where margin invokes only once within the call stack
+    /// This is redundant with check_all_heights_with_any_marks, but it has less risk
+    /// of introducing bugs in the test code.
+    #[test]
+    fn check_all_heights_with_one_mark() {
+        for mark_at in 0..MAX_DEPTH + 1 {
+            let mut subject = Invocation::default();
+            mock_sys!(stack_height = mark_at as usize);
+            subject.start();
+            for check_at in 0..MAX_DEPTH + 1 {
+                mock_sys!(stack_height = check_at as usize);
+                assert_eq!(
+                    mark_at.checked_add(1).unwrap() == check_at,
+                    subject.directly_invoked()
+                )
+            }
+            mock_sys!(stack_height = mark_at as usize);
+            subject.end();
+            for check_at in 0..MAX_DEPTH + 1 {
+                mock_sys!(stack_height = check_at as usize);
+                assert!(!subject.directly_invoked());
+            }
+        }
+    }
+
+    /// Verify that directly_invoked returns the right value for every combination
+    /// of invocations at every height before, during, and after the invocation
+    #[test]
+    fn check_all_heights_with_any_marks() {
+        for size in 0..MAX_DEPTH + 2 {
+            for combo in (0..MAX_DEPTH + 1).combinations(size.into()) {
+                let mut subject = Invocation::default();
+                for depth in combo.clone() {
+                    mock_sys!(stack_height = depth as usize);
+                    assert!(!subject.directly_invoked())
+                }
+                for depth in combo.clone() {
+                    mock_sys!(stack_height = depth as usize);
+                    subject.start();
+                }
+                for depth in 0..MAX_DEPTH + 1 {
+                    mock_sys!(stack_height = depth as usize);
+                    assert_eq!(
+                        depth != 0 && combo.contains(&(depth - 1)),
+                        subject.directly_invoked()
+                    )
+                }
+                for depth in combo {
+                    mock_sys!(stack_height = depth as usize);
+                    subject.end();
+                    mock_sys!(stack_height = depth as usize + 1);
+                    assert!(!subject.directly_invoked())
+                }
+                for depth in 0..MAX_DEPTH + 1 {
+                    mock_sys!(stack_height = depth as usize);
+                    assert!(!subject.directly_invoked())
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bitset_insert() {
+        bitset_manipulation(BitSet::insert, true);
+    }
+
+    #[test]
+    fn bitset_remove() {
+        bitset_manipulation(BitSet::remove, false);
+    }
+
+    /// For every possible initial state, `mutator` makes `contains` return
+    /// `state` without changing the value for any other bit.
+    fn bitset_manipulation(mutator: fn(&mut BitSet, u8) -> (), contains: bool) {
+        for byte in 0..u8::MAX {
+            for n in 0..8 {
+                let mut ba = BitSet { bits: byte };
+                // `insert` or `remove` applies the desired state
+                mutator(&mut ba, n);
+                assert_eq!(contains, ba.contains(n));
+                for i in 0..8u8 {
+                    if i != n {
+                        // other bits are unchanged
+                        assert_eq!(BitSet { bits: byte }.contains(i), ba.contains(i));
+                    }
+                }
+                ba.set(n, BitSet { bits: byte }.contains(n));
+                // set restores the original bit
+                // assert_eq!(BitSet{bits: byte}, ba);
+            }
+        }
+    }
+
+    #[test]
+    fn bitset_extrema() {
+        assert_eq!(BitSet { bits: 0 }.max(), None);
+        assert_eq!(BitSet { bits: 0 }.min(), None);
+        for extremum in 0..8 {
+            let top = 2u8.checked_pow(extremum + 1).unwrap_or(u8::MAX);
+            for byte in 2u8.pow(extremum)..top {
+                assert_eq!(extremum, BitSet { bits: byte }.max().unwrap());
+                assert_eq!(
+                    extremum,
+                    BitSet {
+                        bits: byte.reverse_bits()
+                    }
+                    .min()
+                    .unwrap()
+                );
+            }
+        }
+    }
+}

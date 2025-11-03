@@ -1,0 +1,17 @@
+[package]
+name = "glow-static-program-registry"
+version = "1.0.0"
+edition = "2021"
+description = "Identifies mainnet programs by hardcoding official program IDs and associating client libraries if available."
+
+[lib]
+name = "glow_static_program_registry"
+path = "src/lib.rs"
+
+[features]
+devnet = []
+
+[dependencies]
+paste = "1.0"
+anchor-lang = "0.30.1"
+

@@ -1,0 +1,38 @@
+[package]
+name = "glow-instructions"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4"
+solana-sdk = "1.18"
+thiserror = "1"
+
+anchor-lang = "0.30.1"
+anchor-spl = { version = "0.30.1" }
+
+glow-program-common = { path = "../program-common" }
+
+pyth-solana-receiver-sdk = "0.6.0"
+
+glow-test-service = { path = "../../../programs/test-service", features = [
+    "no-entrypoint",
+] }
+glow-airspace = { path = "../../../programs/airspace", features = [
+    "no-entrypoint",
+] }
+glow-margin = { path = "../../../programs/margin", features = [
+    "no-entrypoint",
+] }
+glow-metadata = { path = "../../../programs/metadata", features = [
+    "no-entrypoint",
+] }
+glow-margin-pool = { path = "../../../programs/margin-pool", features = [
+    "no-entrypoint",
+] }
+
+[dependencies.solana-address-lookup-table-program]
+package = "solana-address-lookup-table-program-gateway"
+git = "https://github.com/Blueprint-Finance/lookup-table-registry.git"
+rev = "714a5cb"
+features = ["stub-id", "stub-instruction"]

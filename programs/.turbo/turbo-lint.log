@@ -1,0 +1,5 @@
+
+
+> @bpf-glow/programs@ lint /home/neville/work/repos/glow-v1/programs
+> rustup run nightly-2025-04-09 cargo fmt --all --check
+

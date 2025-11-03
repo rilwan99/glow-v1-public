@@ -1,0 +1,25 @@
+[package]
+name = "glow-airspace"
+version = "1.0.0"
+description = "Permissions program for Glow"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "glow_airspace"
+path = "src/lib.rs"
+
+[features]
+no-entrypoint = []
+no-idl = []
+cpi = ["no-entrypoint"]
+default = []
+testing = []
+devnet = ["glow-program-common/devnet"]
+idl-build = ["anchor-lang/idl-build", "glow-program-common/idl-build"]
+
+[dependencies]
+solana-program = "1.18"
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
+
+glow-program-common = { path = "../../libraries/rust/program-common" }

@@ -1,0 +1,45 @@
+[package]
+name = "glow-simulation"
+version = "0.2.0"
+edition = "2021"
+
+[features]
+test-runtime = ["solana-address-lookup-table-program/full"]
+default = []
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+bincode = "1.3"
+bytemuck = "1"
+futures = "0.3"
+parking_lot = "0.12"
+rand = "0.8"
+lazy_static = "1"
+base64 = "0.13"
+log = "0.4"
+tokio = { version = "1", features = ["rt", "time"] }
+serde = { version = "1" }
+
+anchor-lang = "0.30.1"
+solana-account-decoder = "1.18"
+solana-client = "1.18"
+solana-sdk = "1.18"
+solana-transaction-status = "1.18"
+solana-program = "1.18"
+solana-program-runtime = "1.18"
+solana-test-framework = { git = "https://github.com/halbornteam/solana-test-framework", features = ["anchor"], branch = "solana1.18"}
+solana-program-test = "1.18"
+solana-banks-interface = "1.18"
+tarpc = "0.29.0"
+
+glow-solana-client = { path = "../solana-client" }
+
+pyth-solana-receiver-sdk = "0.5.0"
+spl-token = { version = "4", features = ["no-entrypoint"] }
+
+[dependencies.solana-address-lookup-table-program]
+package = "solana-address-lookup-table-program-gateway"
+git = "https://github.com/Blueprint-Finance/lookup-table-registry.git"
+rev = "714a5cb"
+features = []

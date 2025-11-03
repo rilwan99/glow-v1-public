@@ -1,0 +1,53 @@
+anchor_version = "0.30.1"
+solana_version = "1.18.18"
+
+[registry]
+url = "https://anchor.projectserum.com"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[workspace]
+# We have to exclude the .turbo folder, otherwise Anchor will try to find a Cargo.toml in there.
+# However, if we exclude it and it doesn't exist, Anchor will fail so we have to include the members explicitly.
+# This does happen when building the local validator image, because it's in a separate CI Workflow.
+members = [
+    "programs/airspace",
+    "programs/margin",
+    "programs/margin-pool",
+    "programs/metadata",
+    "programs/test-service",
+]
+
+[features]
+skip-lint = true
+
+[programs.devnet]
+glow_airspace = "AmAJeyNxxjNHfhBoCpsNMgWxhukdv3DSu3XpLfJspace"
+glow_margin = "GLoWMgcn3VbyFKiC2FGMgfKxYSyTJS7uKFwKY2CSkq9X"
+glow_margin_pool = "CWPeEXnSpELj7tSz9W4oQAGGRbavBtdnhY2bWMyPoo1"
+glow_metadata = "yT2ut38wC6A6zsGo2aUgy9kkh8EBuNXYvtmo7aUg1oW"
+glow_test_service = "test7JXXboKpc8hGTadvoXcFWN4xgnHLGANU92JKrwA"
+
+[programs.localnet]
+glow_airspace = "AmAJeyNxxjNHfhBoCpsNMgWxhukdv3DSu3XpLfJspace"
+glow_margin = "GLoWMgcn3VbyFKiC2FGMgfKxYSyTJS7uKFwKY2CSkq9X"
+glow_margin_pool = "CWPeEXnSpELj7tSz9W4oQAGGRbavBtdnhY2bWMyPoo1"
+glow_metadata = "yT2ut38wC6A6zsGo2aUgy9kkh8EBuNXYvtmo7aUg1oW"
+glow_test_service = "test7JXXboKpc8hGTadvoXcFWN4xgnHLGANU92JKrwA"
+pyth = "FT9EZnpdo3tPfUCGn8SBkvN9DMpSStAg3YvAqvYrtSvL"
+
+[[test.genesis]]
+address = "4bXpkKSV8swHSnwqtzuboGPaPDeEgAn4Vt8GfarV5rZt"
+program = "./deps/spl_token_faucet.so"
+
+[[test.genesis]]
+address = "LooKUpVskBihZovMhwhEqCER8jwLFHhF4QMZA5axZnJ"
+program = "./deps/lookup_table_registry.so"
+
+[test]
+startup_wait = 10000
+
+[scripts]
+test = "tests/scripts/anchor.sh"

@@ -1,0 +1,43 @@
+[package]
+name = "glow-environment"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "1"
+log = "0.4"
+hex = "0.4"
+
+toml = "0.5"
+serde_with = "1.5"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+indexmap = { version = "2", features = ["serde"] }
+
+solana-sdk = "1.18"
+solana-address-lookup-table-program = "1.18"
+spl-token = { version = "4", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "2", features = ["no-entrypoint"] }
+anchor-spl = "0.30.1"
+
+pyth-solana-receiver-sdk = "0.6.0"
+
+lookup-table-registry = { git = "https://github.com/Blueprint-Finance/lookup-table-registry.git", rev = "714a5cb", features = [
+  "no-entrypoint",
+] }
+
+glow-program-common = { path = "../program-common" }
+glow-solana-client = { path = "../solana-client" }
+glow-instructions = { path = "../instructions" }
+glow-margin = { path = "../../../programs/margin", features = [
+  "no-entrypoint",
+] }
+glow-margin-pool = { path = "../../../programs/margin-pool", features = [
+  "no-entrypoint",
+] }
+glow-metadata = { path = "../../../programs/metadata", features = [
+  "no-entrypoint",
+] }
+glow-static-program-registry = { path = "../static-program-registry" }
+
+squads-multisig = { git = "https://github.com/Blueprint-Finance/squads-v4/", branch = "anchor-0.30.1" }

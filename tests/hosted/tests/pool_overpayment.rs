@@ -1,0 +1,296 @@
+use anyhow::Error;
+
+use glow_instructions::MintInfo;
+use glow_margin_sdk::tokens::TokenPrice;
+use glow_program_common::{
+    oracle::{pyth_feed_ids::*, TokenPriceOracle},
+    token_change::TokenChange,
+};
+use solana_sdk::native_token::LAMPORTS_PER_SOL;
+use solana_sdk::signature::Signer;
+
+use hosted_tests::{
+    context::MarginTestContext, margin::MarginPoolSetupInfo, margin_test_context,
+    tokens::preset_token_configs::*,
+};
+
+use glow_margin::{AccountFeatureFlags, TokenKind};
+use glow_margin_pool::{MarginPoolConfig, PoolFlags};
+
+const ONE_USDC: u64 = 1_000_000;
+const ONE_USDT: u64 = 1_000_000;
+const ONE_TSOL: u64 = LAMPORTS_PER_SOL;
+
+const DEFAULT_POOL_CONFIG: MarginPoolConfig = MarginPoolConfig {
+    borrow_rate_0: 10,
+    borrow_rate_1: 20,
+    borrow_rate_2: 30,
+    borrow_rate_3: 40,
+    utilization_rate_1: 10,
+    utilization_rate_2: 20,
+    management_fee_rate: 10,
+    flags: PoolFlags::ALLOW_LENDING.bits(),
+    deposit_limit: u64::MAX,
+    borrow_limit: u64::MAX,
+    reserved: 0,
+};
+
+struct TestEnv {
+    usdc: MintInfo,
+    usdt: MintInfo,
+    tsol: MintInfo,
+    usdc_oracle: TokenPriceOracle,
+    usdt_oracle: TokenPriceOracle,
+    tsol_oracle: TokenPriceOracle,
+}
+
+async fn setup_environment(ctx: &MarginTestContext) -> Result<TestEnv, Error> {
+    let (usdc, usdc_oracle) = ctx
+        .tokens()
+        .create_token_v2(
+            &usdc_config(ctx.mint_authority().pubkey()),
+            100_000_000,
+            false,
+        )
+        .await?;
+    let (usdt, usdt_oracle) = ctx
+        .tokens()
+        .create_token_v2(
+            &usdt_config(ctx.mint_authority().pubkey()),
+            100_000_000,
+            false,
+        )
+        .await?;
+    let (tsol, tsol_oracle) = ctx
+        .tokens()
+        .create_token_v2(
+            &tsol_config(ctx.mint_authority().pubkey()),
+            20_000_000_000,
+            false,
+        )
+        .await?;
+
+    let pools = [
+        MarginPoolSetupInfo {
+            mint_info: usdc,
+            token_kind: TokenKind::Collateral,
+            collateral_weight: 1_00,
+            max_leverage: 4_00,
+            config: DEFAULT_POOL_CONFIG,
+            oracle: TokenPriceOracle::PythPull {
+                feed_id: usdc_usd(),
+            },
+            max_staleness: 30,
+            token_features: Default::default(),
+        },
+        MarginPoolSetupInfo {
+            mint_info: usdt,
+            token_kind: TokenKind::Collateral,
+            collateral_weight: 1_00,
+            max_leverage: 4_00,
+            config: DEFAULT_POOL_CONFIG,
+            oracle: TokenPriceOracle::PythPull {
+                feed_id: usdt_usd(),
+            },
+            max_staleness: 30,
+            token_features: Default::default(),
+        },
+        MarginPoolSetupInfo {
+            mint_info: tsol,
+            token_kind: TokenKind::Collateral,
+            collateral_weight: 95,
+            max_leverage: 4_00,
+            config: DEFAULT_POOL_CONFIG,
+            oracle: TokenPriceOracle::PythPull { feed_id: sol_usd() },
+            max_staleness: 30,
+            token_features: Default::default(),
+        },
+    ];
+
+    for pool_info in pools {
+        ctx.margin_client().create_pool(&pool_info).await?;
+    }
+
+    Ok(TestEnv {
+        usdc,
+        usdt,
+        tsol,
+        usdc_oracle,
+        usdt_oracle,
+        tsol_oracle,
+    })
+}
+
+/// Pool repayment test
+///
+/// Tests that users cannot over-pay their claims.
+/// The test creates 3 users:
+/// 1. Deposits Token A, borrows Token B
+/// 2. Deposits Token B, borrows Token A
+/// 3. Deposits Token C, borrows Tokens A and B, tries to overpay either
+#[tokio::test(flavor = "multi_thread")]
+#[cfg_attr(not(feature = "localnet"), serial_test::serial)]
+async fn pool_overpayment() -> Result<(), anyhow::Error> {
+    // Get the mocked runtime
+    let ctx = margin_test_context!();
+
+    let env = setup_environment(&ctx).await?;
+
+    // Create our two user wallets, with some SOL funding to get started
+    let wallet_a = ctx.create_wallet(10).await?;
+    let wallet_b = ctx.create_wallet(10).await?;
+    let wallet_c = ctx.create_wallet(10).await?;
+
+    // issue permits for the users
+    ctx.issue_permit(wallet_a.pubkey()).await?;
+    ctx.issue_permit(wallet_b.pubkey()).await?;
+    ctx.issue_permit(wallet_c.pubkey()).await?;
+
+    // Create the user context helpers, which give a simple interface for executing
+    // common actions on a margin account
+    let user_a = ctx
+        .margin_client()
+        .user(&wallet_a, 0, glow_client::NetworkKind::Localnet)
+        .created(AccountFeatureFlags::default())
+        .await?;
+    let user_b = ctx
+        .margin_client()
+        .user(&wallet_b, 0, glow_client::NetworkKind::Localnet)
+        .created(AccountFeatureFlags::default())
+        .await?;
+    let user_c = ctx
+        .margin_client()
+        .user(&wallet_c, 0, glow_client::NetworkKind::Localnet)
+        .created(AccountFeatureFlags::default())
+        .await?;
+
+    // Create some tokens for each user to deposit
+    let user_a_usdc_account = ctx
+        .tokens()
+        .create_account_funded(env.usdc, &wallet_a.pubkey(), 1_000_000 * ONE_USDC)
+        .await?;
+    let user_b_tsol_account = ctx
+        .tokens()
+        .create_account_funded(env.tsol, &wallet_b.pubkey(), 1_000 * ONE_TSOL)
+        .await?;
+    let user_c_usdt_account = ctx
+        .tokens()
+        .create_account_funded(env.usdt, &wallet_c.pubkey(), 1_000_000 * ONE_USDT)
+        .await?;
+    let user_c_tsol_account = ctx
+        .tokens()
+        .create_account_funded(env.tsol, &wallet_c.pubkey(), 500 * ONE_TSOL)
+        .await?;
+
+    // Set the prices for each token
+    ctx.tokens()
+        .set_price(
+            // Set price to 1 USD +- 0.01
+            &env.usdc.address,
+            &TokenPrice {
+                exponent: -8,
+                price: 100_000_000,
+                confidence: 1_000_000,
+                twap: 100_000_000,
+                feed_id: *env.usdc_oracle.pyth_feed_id().unwrap(),
+            },
+        )
+        .await?;
+    ctx.tokens()
+        .set_price(
+            // Set price to 1 USD +- 0.01
+            &env.usdt.address,
+            &TokenPrice {
+                exponent: -8,
+                price: 100_000_000,
+                confidence: 1_000_000,
+                twap: 100_000_000,
+                feed_id: *env.usdt_oracle.pyth_feed_id().unwrap(),
+            },
+        )
+        .await?;
+    ctx.tokens()
+        .set_price(
+            // Set price to 100 USD +- 1
+            &env.tsol.address,
+            &TokenPrice {
+                exponent: -8,
+                price: 10_000_000_000,
+                confidence: 100_000_000,
+                twap: 10_000_000_000,
+                feed_id: *env.tsol_oracle.pyth_feed_id().unwrap(),
+            },
+        )
+        .await?;
+
+    // Deposit user funds into their margin accounts
+    user_a
+        .pool_deposit_deprecated(
+            env.usdc,
+            &user_a_usdc_account,
+            TokenChange::shift(1_000_000 * ONE_USDC),
+        )
+        .await?;
+    user_b
+        .pool_deposit_deprecated(
+            env.tsol,
+            &user_b_tsol_account,
+            TokenChange::shift(1_000 * ONE_TSOL),
+        )
+        .await?;
+    user_c
+        .pool_deposit_deprecated(
+            env.usdt,
+            &user_c_usdt_account,
+            TokenChange::shift(1_000_000 * ONE_USDT),
+        )
+        .await?;
+    // User deposits TSOL which they will use to over-pay
+    user_c
+        .pool_deposit_deprecated(
+            env.tsol,
+            &user_c_tsol_account,
+            TokenChange::shift(500 * ONE_TSOL),
+        )
+        .await?;
+
+    // Verify user tokens have been deposited
+    assert_eq!(0, ctx.tokens().get_balance(&user_a_usdc_account).await?);
+    assert_eq!(0, ctx.tokens().get_balance(&user_b_tsol_account).await?);
+    assert_eq!(0, ctx.tokens().get_balance(&user_c_usdt_account).await?);
+
+    user_a.refresh_all_pool_positions().await?;
+    user_b.refresh_all_pool_positions().await?;
+    user_c.refresh_all_pool_positions().await?;
+
+    // User A borrows enough TSOL so that there is sufficient liquidity when C repays
+    user_a
+        .borrow(env.tsol, TokenChange::shift(1_000 * ONE_TSOL))
+        .await?;
+    // User B borrows an irrelevant amount
+    user_b
+        .borrow(env.usdc, TokenChange::shift(1_000 * ONE_USDC))
+        .await?;
+    user_c
+        .borrow(env.usdc, TokenChange::shift(1_000 * ONE_USDC))
+        .await?;
+    // Borrow TSOL which user will try to overpay
+    user_c
+        .borrow(env.tsol, TokenChange::shift(100 * ONE_TSOL))
+        .await?;
+
+    // User repays their loan by setting the value to 0
+    user_c
+        .margin_repay(env.tsol, TokenChange::set_destination(0))
+        .await?;
+
+    user_c
+        .withdraw(env.tsol, &user_c_tsol_account, TokenChange::set_source(0))
+        .await?;
+    assert!(ctx.tokens().get_balance(&user_c_tsol_account).await? - 500 * ONE_TSOL < ONE_TSOL);
+
+    // User C should be able to close all TSOL positions as loan is paid and deposit withdrawn
+    user_c.close_pool_positions(env.tsol).await?;
+
+    Ok(())
+}
