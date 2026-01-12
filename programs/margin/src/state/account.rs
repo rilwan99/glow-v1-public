@@ -181,7 +181,7 @@ pub struct AccountConstraintTicket {
 // bytemuck requires a higher alignment than 1 for unit tests to run.
 #[cfg_attr(not(target_arch = "bpf"), repr(align(8)))]
 pub struct MarginAccount {
-    pub version: u8,
+    pub version: u8, // initialised to MARGIN_ACCOUNT_VERSION(1)
     pub bump_seed: [u8; 1],
     pub user_seed: [u8; 2],
 
@@ -199,7 +199,7 @@ pub struct MarginAccount {
     /// The airspace this account belongs to
     pub airspace: Pubkey,
 
-    /// The active liquidator for this account
+    /// The active liquidator for this account (initialised to default pubkey)
     pub liquidator: Pubkey,
 
     /// The storage for tracking account balances
@@ -331,12 +331,15 @@ impl MarginAccount {
         config: PositionConfigUpdate,
         approvals: &[Approver],
     ) -> AnchorResult<AccountPositionKey> {
+        // Ensure user cannot add more positions than max allowed (24)
         if !self.is_liquidating() && self.position_list().length >= MAX_USER_POSITIONS {
             return err!(ErrorCode::MaxPositions);
         }
+        // Airspace needs to match
         if self.airspace != config.airspace {
             return err!(ErrorCode::WrongAirspace);
         }
+
         let token_features = config.token_features;
         // Check the position's feature flags, if the account's feature flags aren't empty.
         if !self.features.is_empty() {
@@ -356,6 +359,7 @@ impl MarginAccount {
 
         let (key, free_position) = self.position_list_mut().add(config.mint)?;
 
+        // @note account.positions (Positions Array) is updated
         if let Some(free_position) = free_position {
             free_position.exponent = -(config.decimals as i16);
             free_position.address = config.address;
@@ -525,12 +529,17 @@ impl MarginAccount {
     /// Check if the given address is the current authority for this margin account
     pub fn verify_authority(&self, authority: Pubkey) -> Result<(), ErrorCode> {
         if self.is_liquidating() {
+            // Owner is blocked from closing account is margin account is liquiditable
             if authority == self.owner {
                 return Err(ErrorCode::Liquidating);
-            } else if authority != self.liquidator {
+            }
+            // Only configured liquidator can close this account, set via liquidate_begin()
+            else if authority != self.liquidator {
                 return Err(ErrorCode::UnauthorizedLiquidator);
             }
-        } else if authority != self.owner {
+        }
+        // If account is NOT liquidatable, only owner can close it
+        else if authority != self.owner {
             return Err(ErrorCode::UnauthorizedInvocation);
         }
 

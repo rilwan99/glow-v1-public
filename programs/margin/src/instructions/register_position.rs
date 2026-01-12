@@ -86,6 +86,7 @@ pub fn register_position_handler(ctx: Context<RegisterPosition>) -> Result<()> {
             return err!(ErrorCode::InvalidConfigRegisterPosition);
         }
     };
+
     if config.token_kind != crate::TokenKind::Collateral {
         msg!("register_position only supports TokenKind::Collateral");
         return err!(ErrorCode::InvalidConfigRegisterPosition);
@@ -94,8 +95,11 @@ pub fn register_position_handler(ctx: Context<RegisterPosition>) -> Result<()> {
     let account = &mut ctx.accounts.margin_account.load_mut()?;
     let position_token = &ctx.accounts.position_token_mint;
     let address = ctx.accounts.token_account.key();
+
+    // Ownership check: Ensure that signer is allowed to mutate this margin account
     account.verify_authority(ctx.accounts.authority.key())?;
 
+    //  A margin account may have at most one registered position per token mint (one slot per mint).
     if account.has_position(&position_token.key()) {
         return err!(ErrorCode::PositionAlreadyExists);
     }

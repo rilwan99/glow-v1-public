@@ -22,7 +22,7 @@ use glow_airspace::state::AirspacePermit;
 use crate::{events, AccountFeatureFlags, MarginAccount};
 
 #[derive(Accounts)]
-#[instruction(seed: u16)]
+#[instruction(seed: u16)] // seed: User input
 pub struct CreateAccount<'info> {
     /// The owner of the new margin account
     pub owner: Signer<'info>,
@@ -34,6 +34,7 @@ pub struct CreateAccount<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
+    // Create a PDA representing the margin account
     /// The margin account to initialize for the owner
     #[account(init,
               seeds = [owner.key.as_ref(), permit.airspace.as_ref(), seed.to_le_bytes().as_ref()],
@@ -68,6 +69,7 @@ pub fn create_account_handler(
 
     let mut account = ctx.accounts.margin_account.load_init()?;
 
+    // Sets internal fields of the margin account
     account.initialize(
         ctx.accounts.permit.airspace,
         *ctx.accounts.owner.key,
