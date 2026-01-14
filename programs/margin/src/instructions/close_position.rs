@@ -67,8 +67,10 @@ impl<'info> ClosePosition<'info> {
 pub fn close_position_handler(ctx: Context<ClosePosition>) -> Result<()> {
     {
         let account = &mut ctx.accounts.margin_account.load_mut()?;
+        // Margin account ownership check -> verify caller is owner of margin account (unless liquidation flow)
         account.verify_authority(ctx.accounts.authority.key())?;
 
+        // Remove the position from the margin account
         account.unregister_position(
             &ctx.accounts.position_token_mint.key(),
             &ctx.accounts.token_account.key(),
@@ -76,6 +78,7 @@ pub fn close_position_handler(ctx: Context<ClosePosition>) -> Result<()> {
         )?;
     }
 
+    // Check if the token account is OWNED by the margin account PDA (incl Collateral, excl AdapterCollateral)
     if ctx.accounts.token_account.owner == ctx.accounts.margin_account.key() {
         let account = ctx.accounts.margin_account.load()?;
         token_2022::close_account(

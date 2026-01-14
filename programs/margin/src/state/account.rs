@@ -332,6 +332,7 @@ impl MarginAccount {
         approvals: &[Approver],
     ) -> AnchorResult<AccountPositionKey> {
         // Ensure user cannot add more positions than max allowed (24)
+        // @audit look into how this can be exploted -> For example, malicious liquidator add too many postions that cause DOS/buffer overflow
         if !self.is_liquidating() && self.position_list().length >= MAX_USER_POSITIONS {
             return err!(ErrorCode::MaxPositions);
         }
@@ -399,20 +400,26 @@ impl MarginAccount {
 
     /// Free the space from a previously registered position no longer needed
     pub fn unregister_position(
-        &mut self,
-        mint: &Pubkey,
-        account: &Pubkey,
-        approvals: &[Approver],
+        &mut self,              // Margin Account (Ownership check alr performed)
+        mint: &Pubkey,          // position_token_mint (user input)
+        account: &Pubkey,       // token_account (user input)
+        approvals: &[Approver], // MarginAccountAuthority
     ) -> AnchorResult<()> {
         let removed = self.position_list_mut().remove(mint, account)?;
 
+        // Auth check when closing account
         if !removed.may_be_registered_or_closed(approvals) {
             msg!("{:?} is not authorized to close {:?}", approvals, removed);
             return err!(ErrorCode::InvalidPositionOwner);
         }
+
+        // Collateral Position: User needs to call transfer_deposit() to empty out position before closing
+        // Claim positions (Debt): User needs to repay debt via margin_repay()
         if removed.balance != 0 {
             return err!(ErrorCode::CloseNonZeroPosition);
         }
+
+        // If position has REQUIRED flag set -> It cannot be closed
         if removed.flags.contains(AdapterPositionFlags::REQUIRED) {
             return err!(ErrorCode::CloseRequiredPosition);
         }
@@ -497,14 +504,16 @@ impl MarginAccount {
 
     /// Change the balance for a position
     pub fn set_position_balance(
-        &mut self,
-        mint: &Pubkey,
-        account: &Pubkey,
-        balance: u64,
+        &mut self,        // MarginAccount
+        mint: &Pubkey,    // token_account.mint
+        account: &Pubkey, // token_account.key
+        balance: u64,     // token_account.amount
         timestamp: u64,
     ) -> Result<AccountPosition, ErrorCode> {
+        // Ensures the margin account has a registered position for the token before updating its balance
         let position = self.position_list_mut().get_mut(mint).require()?;
 
+        // Verify the token account address provided matches the registered token account for this position in the margin account
         if position.address != *account {
             return Err(ErrorCode::PositionNotRegistered);
         }
@@ -548,12 +557,18 @@ impl MarginAccount {
 
     pub fn valuation(&self, timestamp: u64) -> AnchorResult<Valuation> {
         let mut past_due = false;
-        let mut liabilities = Number128::ZERO;
+        // Accumulated from Claims positions (debt)
+        let mut liabilities = Number128::ZERO; // raw USD value of debt
+
+        //  The minimum collateral required based on max leverage (value_modifier for Claims)
         let mut required_collateral = Number128::ZERO;
+
+        //  Accumulated from Collateral positions, adjusted by a collateral weight (value_modifier):
         let mut weighted_collateral = Number128::ZERO;
         let mut stale_collateral_list = vec![];
         let mut equity = Number128::ZERO;
 
+        // Iterates through all the positions in the margin account
         for position in self.positions() {
             if position.balance == 0 {
                 continue;
@@ -563,15 +578,17 @@ impl MarginAccount {
                 let balance_age = timestamp - position.balance_timestamp;
                 let price_quote_age = timestamp - position.price.timestamp;
 
+                // collateral with bad prices
                 if !position.price.is_valid() {
                     msg!("Bad collateral {:?}", position);
-                    // collateral with bad prices
                     Some(ErrorCode::InvalidPrice)
-                } else if position.max_staleness > 0 && balance_age > position.max_staleness {
-                    // outdated balance
+                }
+                // outdated balance
+                else if position.max_staleness > 0 && balance_age > position.max_staleness {
                     Some(ErrorCode::OutdatedBalance)
-                } else if price_quote_age > MAX_PRICE_QUOTE_AGE {
-                    // outdated price
+                }
+                // outdated price
+                else if price_quote_age > MAX_PRICE_QUOTE_AGE {
                     Some(ErrorCode::OutdatedPrice)
                 } else {
                     None
@@ -599,6 +616,8 @@ impl MarginAccount {
                     equity += position.value();
                     weighted_collateral += position.collateral_value();
                 }
+
+                // Stale Collateral is excluded from being counted, added to stale_collateral_list
                 (TokenKind::AdapterCollateral | TokenKind::Collateral, Some(e)) => {
                     stale_collateral_list.push((position.token, e));
                 }
@@ -611,6 +630,7 @@ impl MarginAccount {
             past_due,
             required_collateral,
             weighted_collateral,
+            // The collateral value (USD) avail after subtracting debts
             effective_collateral: weighted_collateral - liabilities,
             stale_collateral_list,
         })
@@ -897,11 +917,15 @@ impl Valuation {
             return err!(ErrorCode::Unhealthy);
         }
 
+        // HEALTHY: effective_collateral >= required_collateral
+        // (weighted_collateral - liabilities) >= (debt / leverage)
+
         Ok(())
     }
 
     /// Check that the overall health of the account is *not* acceptable.
     pub fn verify_unhealthy(&self) -> AnchorResult<()> {
+        // If there is stale collateral, position is marked as unhealthy
         if !self.stale_collateral_list.is_empty() {
             for (position_token, error) in self.stale_collateral_list.iter() {
                 msg!("stale position {}: {}", position_token, error)
@@ -910,8 +934,11 @@ impl Valuation {
         }
 
         match self.required_collateral > self.effective_collateral {
+            // User position is unhealthy due to not meeting min collat required
             true => Ok(()),
+            // User position is marked has unhealthy due to overdue debt
             false if self.past_due => Ok(()),
+            // verify_unhealthy_handler handler fails with this error
             false => err!(ErrorCode::Healthy),
         }
     }

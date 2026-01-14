@@ -177,6 +177,7 @@ impl AccountPosition {
         TokenKind::from_integer(self.kind).unwrap_or_default()
     }
 
+    // Raw USD value of a position (balance * price)
     pub fn calculate_value(&mut self) {
         self.value = (Number128::from_decimal(self.balance, self.exponent)
             * Number128::from_decimal(self.price.value, self.price.exponent))
@@ -204,6 +205,7 @@ impl AccountPosition {
             msg!("no leverage configured for claim {}", &self.token);
             Number128::MAX
         } else {
+            //  debt / leverage = required collateral
             self.value() / modifier
         }
     }
@@ -223,6 +225,8 @@ impl AccountPosition {
         Ok(())
     }
 
+    // Auth check that determines whether a position can be registered/closed
+    // based on (1) caller and (2) type of position
     pub fn may_be_registered_or_closed(&self, approvals: &[Approver]) -> bool {
         let mut authority_approved = false;
         let mut adapter_approved = false;
@@ -237,7 +241,9 @@ impl AccountPosition {
         }
 
         match self.kind() {
+            // Only Authority can close it
             TokenKind::Collateral => authority_approved && !adapter_approved,
+            // Requires Authority AND matching Adapter
             TokenKind::Claim | TokenKind::AdapterCollateral => {
                 authority_approved && adapter_approved
             }
@@ -378,15 +384,20 @@ impl AccountPositionList {
     /// - If an account with the `mint` does not exist.
     /// - If the position's address is not the same as the `account`
     pub fn remove(&mut self, mint: &Pubkey, account: &Pubkey) -> AnchorResult<AccountPosition> {
+        // Return Error if position is not registered
         let map_index = self
             .get_map_index(mint)
             .ok_or(ErrorCode::PositionNotRegistered)?;
+
         // Get the map whose position to remove
-        let map = self.map[map_index];
+        let map: AccountPositionKey = self.map[map_index];
         let position_index = usize::try_from(map.index).unwrap();
+
         // Take a copy of the position to be removed
         let position = self.positions[position_index];
+
         // Check that the position is correct
+        // Verify that the registered token account for the magin account matches the token account provided
         if &position.address != account {
             return err!(ErrorCode::PositionNotRegistered);
         }

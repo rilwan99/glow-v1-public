@@ -33,7 +33,9 @@ pub fn verify_healthy_handler(ctx: Context<VerifyHealthy>) -> Result<()> {
     let account = ctx.accounts.margin_account.load()?;
 
     account
+        // Calc all position (assets, liabilities) and returns a Valuation Struct
         .valuation(sys().unix_timestamp())?
+        // Checks if the valuation meets the protocol's health requirements
         .verify_healthy()?;
 
     emit!(events::VerifiedHealthy {
